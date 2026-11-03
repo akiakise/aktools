@@ -111,7 +111,8 @@ jobs:
   # 2. 版本记录有更新 -> 拉取上游 Dockerfile 构建并推送镜像
   # ------------------------------------------------------------------ #
   build:
-    name: Build & push ${{ env.IMAGE_NAME }}
+    # 注意：jobs.<id>.name 中不可用 env context，因此这里直接写字面量
+    name: Build & push akise/aktools
     needs: versions
     if: needs.versions.outputs.changed == 'true' || inputs.force_build == true
     runs-on: ubuntu-latest
