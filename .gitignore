@@ -1,0 +1,24 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# ---- 版本检查脚本的临时/本地产物 ----
+.version-check-cache/
+.versions-*.tmp
+
+# ---- 本地构建产物 ----
+Dockerfile.upstream
+.dockerignore.local
+
+# ---- 编辑器 / 系统 ----
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ---- 日志 ----
+*.log
+aktools_log.log

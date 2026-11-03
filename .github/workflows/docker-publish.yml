@@ -1,0 +1,182 @@
+name: Update versions & publish Docker image
+
+# 触发方式：
+#   1. push 到 main / master（含合并 PR）—— 先刷新版本记录文件，若记录文件有变更则构建镜像
+#   2. 手动触发（workflow_dispatch）
+#   3. 定时巡检（schedule）—— 发现 akshare / aktools 有新版本时自动更新记录并构建镜像
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: "忽略版本记录文件是否变化，强制构建并推送镜像"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 2 * * *" # 每天 10:00 (Asia/Shanghai) 巡检一次
+
+# 同一分支串行执行，避免两次提交并发推送同名标签；
+# 不取消进行中的构建，防止“回写记录文件”触发的运行打断正在推送镜像的任务
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # 需要回写 versions.json
+  packages: write
+
+env:
+  IMAGE_NAME: akise/aktools
+  DOCKERFILE_URL: https://raw.githubusercontent.com/akfamily/aktools/refs/heads/main/Dockerfile
+  VERSIONS_FILE: versions.json
+
+jobs:
+  # ------------------------------------------------------------------ #
+  # 1. 检查 pip 版本并更新版本记录文件
+  # ------------------------------------------------------------------ #
+  versions:
+    name: Check pip versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # 跳过“自己回写 versions.json”产生的那次 push，避免自我触发循环
+    if: |
+      github.event_name != 'push' ||
+      !startsWith(github.event.head_commit.message, 'chore(versions):')
+    outputs:
+      changed: ${{ steps.detect.outputs.changed }}
+      akshare: ${{ steps.detect.outputs.akshare }}
+      aktools: ${{ steps.detect.outputs.aktools }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # 使用 PAT（若配置）以便回写能触发后续 workflow；否则用默认 token
+          token: ${{ secrets.GH_PAT || github.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check akshare / aktools versions
+        run: |
+          python scripts/check_versions.py \
+            --file "$VERSIONS_FILE" \
+            --index-url "${{ vars.PYPI_INDEX_URL || 'https://pypi.org/simple' }}" \
+            --verbose
+
+      - name: Detect changes in version record
+        id: detect
+        run: |
+          set -euo pipefail
+          # 先 add 再 diff --cached，确保首次生成（untracked）的记录文件也能被识别
+          git add -- "$VERSIONS_FILE"
+          if git diff --cached --quiet -- "$VERSIONS_FILE"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "版本记录文件未变化，跳过镜像构建。"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "版本记录文件有更新："
+            git --no-pager diff --cached -- "$VERSIONS_FILE"
+          fi
+
+          akshare=$(python -c "import json;print(json.load(open('$VERSIONS_FILE'))['packages'].get('akshare',{}).get('latest',''))")
+          aktools=$(python -c "import json;print(json.load(open('$VERSIONS_FILE'))['packages'].get('aktools',{}).get('latest',''))")
+          echo "akshare=$akshare" >> "$GITHUB_OUTPUT"
+          echo "aktools=$aktools" >> "$GITHUB_OUTPUT"
+
+      - name: Commit version record
+        if: steps.detect.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # 文件已在 detect 步骤中 add
+          git diff --cached --quiet && { echo "无内容可提交，跳过"; exit 0; }
+          git commit -m "chore(versions): update akshare=${{ steps.detect.outputs.akshare }} aktools=${{ steps.detect.outputs.aktools }}"
+          # 显式推送到当前分支，避免强推到陈旧 ref 覆盖他人提交
+          git push origin "HEAD:${{ github.ref_name }}"
+
+      - name: Upload version record
+        if: steps.detect.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: versions-record
+          path: ${{ env.VERSIONS_FILE }}
+          retention-days: 7
+
+  # ------------------------------------------------------------------ #
+  # 2. 版本记录有更新 -> 拉取上游 Dockerfile 构建并推送镜像
+  # ------------------------------------------------------------------ #
+  build:
+    name: Build & push ${{ env.IMAGE_NAME }}
+    needs: versions
+    if: needs.versions.outputs.changed == 'true' || inputs.force_build == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch upstream Dockerfile
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-delay 2 -o Dockerfile.upstream "$DOCKERFILE_URL"
+          echo "----- Dockerfile.upstream -----"
+          cat Dockerfile.upstream
+          # 兜底校验，避免拿到错误页面
+          grep -q '^FROM' Dockerfile.upstream || { echo "上游 Dockerfile 内容异常"; exit 1; }
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.upstream
+          platforms: linux/amd64,linux/arm64
+          push: true
+          pull: true
+          # 只推送 latest；实际版本号记录在 versions.json 与 OCI 标签中
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.title=aktools
+            org.opencontainers.image.description=AKTools HTTP API server (akshare + aktools, multi-arch)
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.versions.outputs.aktools }}
+            io.akise.akshare.version=${{ needs.versions.outputs.akshare }}
+            io.akise.aktools.version=${{ needs.versions.outputs.aktools }}
+          # 国内构建可切换镜像源；在仓库变量中配置即可，默认官方源
+          build-args: |
+            BASE_IMAGE=${{ vars.BASE_IMAGE || 'python:3.14-slim-trixie' }}
+            PIP_INDEX_URL=${{ vars.PYPI_INDEX_URL || 'https://pypi.org/simple' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          {
+            echo "### Docker image published"
+            echo ""
+            echo "| item | value |"
+            echo "| --- | --- |"
+            echo "| image | \`${IMAGE_NAME}\` |"
+            echo "| akshare | \`${{ needs.versions.outputs.akshare }}\` |"
+            echo "| aktools | \`${{ needs.versions.outputs.aktools }}\` |"
+            echo "| revision | \`${GITHUB_SHA}\` |"
+            echo "| Dockerfile | ${DOCKERFILE_URL} |"
+          } >> "$GITHUB_STEP_SUMMARY"
