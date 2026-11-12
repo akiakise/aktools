@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-11-10T09:06:29Z",
+  "updated_at": "2026-11-12T09:07:13Z",
   "packages": {
     "akshare": {
-      "latest": "1.20.37",
-      "previous": "1.20.36",
+      "latest": "1.20.38",
+      "previous": "1.20.37",
       "first_seen_at": "2026-11-03T05:12:32Z",
-      "updated_at": "2026-11-10T09:06:29Z",
-      "release_time": "2026-11-09T16:31:48.712890Z",
+      "updated_at": "2026-11-12T09:07:13Z",
+      "release_time": "2026-11-12T05:46:09.146998Z",
       "source": "https://pypi.org/pypi/akshare/json",
       "history": [
         {
@@ -33,6 +33,10 @@
         {
           "version": "1.20.37",
           "detected_at": "2026-11-10T09:06:29Z"
+        },
+        {
+          "version": "1.20.38",
+          "detected_at": "2026-11-12T09:07:13Z"
         }
       ]
     },
