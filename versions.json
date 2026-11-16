@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-11-15T08:44:42Z",
+  "updated_at": "2026-11-16T08:55:12Z",
   "packages": {
     "akshare": {
-      "latest": "1.20.63",
-      "previous": "1.20.42",
+      "latest": "1.20.65",
+      "previous": "1.20.63",
       "first_seen_at": "2026-11-03T05:12:32Z",
-      "updated_at": "2026-11-15T08:44:42Z",
-      "release_time": "2026-11-14T16:25:43.512038Z",
+      "updated_at": "2026-11-16T08:55:12Z",
+      "release_time": "2026-11-15T13:27:21.282422Z",
       "source": "https://pypi.org/pypi/akshare/json",
       "history": [
         {
@@ -49,15 +49,19 @@
         {
           "version": "1.20.63",
           "detected_at": "2026-11-15T08:44:42Z"
+        },
+        {
+          "version": "1.20.65",
+          "detected_at": "2026-11-16T08:55:12Z"
         }
       ]
     },
     "aktools": {
-      "latest": "0.1.10",
-      "previous": "0.1.7",
+      "latest": "0.1.12",
+      "previous": "0.1.10",
       "first_seen_at": "2026-11-03T05:12:32Z",
-      "updated_at": "2026-11-15T08:44:42Z",
-      "release_time": "2026-11-14T15:24:53.639791Z",
+      "updated_at": "2026-11-16T08:55:12Z",
+      "release_time": "2026-11-15T13:47:57.571710Z",
       "source": "https://pypi.org/pypi/aktools/json",
       "history": [
         {
@@ -75,6 +79,10 @@
         {
           "version": "0.1.10",
           "detected_at": "2026-11-15T08:44:42Z"
+        },
+        {
+          "version": "0.1.12",
+          "detected_at": "2026-11-16T08:55:12Z"
         }
       ]
     }
